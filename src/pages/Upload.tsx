@@ -25,44 +25,34 @@ export default function Upload() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!video) return alert("Please select a video file");
+
     setLoading(true);
 
     try {
+      const token = localStorage.getItem("ft_token");
+      if (!token) {
+        alert("You must be logged in to upload videos.");
+        return;
+      }
+
       const fileNameEncoded = encodeURIComponent(video.name);
       const videoRes = await fetch(
         `${
           import.meta.env.VITE_API_URL
         }/api/upload/upload-url?fileName=${fileNameEncoded}&fileType=${encodeURIComponent(
           video.type
-        )}`,
-        { credentials: "include" }
+        )}`
       );
-      if (!videoRes.ok) {
-        const body = await getJson(videoRes);
-        throw new Error(
-          `Failed to get upload URL (video): ${videoRes.status} ${
-            body?.error || JSON.stringify(body) || ""
-          }`
-        );
-      }
+
+      if (!videoRes.ok) throw new Error("Failed to get video upload URL");
       const videoData = await videoRes.json();
-      if (!videoData?.uploadUrl || !videoData?.videoUrl) {
-        console.error("videoData:", videoData);
-        throw new Error("Backend did not return uploadUrl/videoUrl for video");
-      }
-      const putVideoRes = await fetch(videoData.uploadUrl, {
+      const finalVideoUrl = videoData.videoUrl;
+
+      await fetch(videoData.uploadUrl, {
         method: "PUT",
-        headers: {
-          "Content-Type": video.type,
-        },
+        headers: { "Content-Type": video.type },
         body: video,
       });
-      if (!putVideoRes.ok) {
-        throw new Error(
-          `Upload to S3 failed for video: ${putVideoRes.status} ${putVideoRes.statusText}`
-        );
-      }
-      const finalVideoUrl = videoData.videoUrl;
 
       let finalThumbnailUrl = "";
       if (thumbnail) {
@@ -72,34 +62,14 @@ export default function Upload() {
             import.meta.env.VITE_API_URL
           }/api/upload/upload-url?fileName=${thumbFileName}&fileType=${encodeURIComponent(
             thumbnail.type
-          )}`,
-          { credentials: "include" }
+          )}`
         );
-        if (!thumbRes.ok) {
-          const b = await getJson(thumbRes);
-          throw new Error(
-            `Failed to get upload URL (thumbnail): ${thumbRes.status} ${
-              b?.error || ""
-            }`
-          );
-        }
         const thumbData = await thumbRes.json();
-        if (!thumbData?.uploadUrl || !thumbData?.videoUrl) {
-          console.error("thumbData:", thumbData);
-          throw new Error(
-            "Backend did not return uploadUrl/videoUrl for thumbnail"
-          );
-        }
-        const putThumbRes = await fetch(thumbData.uploadUrl, {
+        await fetch(thumbData.uploadUrl, {
           method: "PUT",
           headers: { "Content-Type": thumbnail.type },
           body: thumbnail,
         });
-        if (!putThumbRes.ok) {
-          throw new Error(
-            `Upload to S3 failed for thumbnail: ${putThumbRes.status}`
-          );
-        }
         finalThumbnailUrl = thumbData.videoUrl;
       }
 
@@ -107,37 +77,37 @@ export default function Upload() {
         `${import.meta.env.VITE_API_URL}/api/upload/save`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
           body: JSON.stringify({
             title,
             description,
             videoUrl: finalVideoUrl,
+            thumbnailUrl: finalThumbnailUrl || null,
             tags: tags
               ? tags
                   .split(",")
                   .map((t) => t.trim())
                   .filter(Boolean)
               : [],
-            thumbnailUrl: finalThumbnailUrl || undefined,
           }),
         }
       );
 
       if (!saveRes.ok) {
-        const errBody = await getJson(saveRes);
+        const err = await saveRes.json();
         throw new Error(
-          `Saving metadata failed: ${saveRes.status} ${
-            errBody?.error || JSON.stringify(errBody)
-          }`
+          `Failed to save metadata: ${err.error || saveRes.statusText}`
         );
       }
 
       alert("Video uploaded and saved successfully!");
       navigate("/profile");
-    } catch (err) {
+    } catch (err: any) {
       console.error("UPLOAD ERROR:", err);
-      alert(err instanceof Error ? err.message : "Upload failed");
+      alert(err.message || "Upload failed. Please try again.");
     } finally {
       setLoading(false);
     }
