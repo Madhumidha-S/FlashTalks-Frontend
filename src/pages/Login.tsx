@@ -34,15 +34,6 @@ export default function Login() {
       if (!window.google || !window.google.accounts) return;
       window.google.accounts.id.initialize({
         client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
-        // callback: async (response: any) => {
-        //   try {
-        //     await loginWithGoogleToken(response.credential);
-        //     navigate("/dashboard");
-        //   } catch (err) {
-        //     console.error("Login failed", err);
-        //     alert("Login failed");
-        //   }
-        // },
         callback: async (response: any) => {
           console.log("Google response:", response);
           if (!response.credential) {
